@@ -1,10 +1,12 @@
-import { ArchaeologyReport, StrataLayer } from '../core/models';
+import { ArchaeologyReport } from '../core/models';
 import { SampleSite } from '../adapters/sample-data.adapter';
 
 export interface UIEventHandlers {
   onSelectPreset: (siteId: string) => void;
   onUploadFile: (file: File) => void;
   onOpenReport: () => void;
+  onDismissError: () => void;
+  onLoadSample: () => void;
 }
 
 export function renderApp(
@@ -14,61 +16,33 @@ export function renderApp(
   selectedSiteId: string,
   selectedLayerIndex: number,
   isReportOpen: boolean,
+  importError: string | null,
   handlers: UIEventHandlers,
   onSelectLayer: (idx: number) => void,
   onCloseReport: () => void
 ) {
-  const currentLayer = report.strata[selectedLayerIndex] || report.strata[0];
-
   const escapeHtml = (str: string) =>
     str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
 
-  container.innerHTML = `
-    <div class="archaeo-app">
-      <header class="site-header">
-        <div class="brand">
-          <div class="brand-icon">⛏️</div>
-          <div>
-            <h1>对话地层学 · 关系考古勘探系统</h1>
-            <p>RELATIONSHIP STRATIGRAPHY &amp; EXCAVATION REPORT · v1.0.0</p>
-          </div>
-        </div>
-        <div class="header-status">
-          <span>● 发掘就绪 | 标本勘测点：${escapeHtml(report.siteCode)}</span>
-        </div>
-      </header>
+  // 地层越界保护：空报告或陈旧索引都不会访问到不存在的地层
+  const layerCount = report.strata.length;
+  const hasStrata = layerCount > 0;
+  const activeLayerIndex = hasStrata ? Math.min(Math.max(selectedLayerIndex, 0), layerCount - 1) : 0;
+  const currentLayer = hasStrata ? report.strata[activeLayerIndex] : null;
 
-      <section class="control-hub">
-        <div class="preset-sites">
-          <div class="preset-title">
-            <span>🏺 历史遗址标本库 (点击切换发掘地)：</span>
-          </div>
-          <div class="preset-btns">
-            ${sampleSites
-              .map(
-                s => `
-              <button class="btn-preset ${s.id === selectedSiteId ? 'active' : ''}" data-site="${s.id}">
-                <strong>${escapeHtml(s.name)}</strong>
-                <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(s.eraSpan)}</div>
-              </button>
-            `
-              )
-              .join('')}
-          </div>
-        </div>
+  const errorBanner = importError
+    ? `
+    <div class="import-error-banner" role="alert">
+      <span class="error-icon">⚠️</span>
+      <span class="error-text">${escapeHtml(importError)}</span>
+      <button class="error-close" id="btnDismissError" aria-label="关闭错误提示">✕</button>
+    </div>
+  `
+    : '';
 
-        <div class="upload-section">
-          <div class="drop-area" id="dropArea">
-            <input type="file" id="chatFileInput" class="file-input" accept=".txt,.json,.csv" />
-            <p>📄 拖拽或点击导入本地聊天记录文件 (支持微信/QQ/短信文本导出格式)</p>
-            <span style="font-size:12px;color:var(--text-muted);">纯前端本地地质切片计算，无任何网络传输</span>
-          </div>
-          <button class="btn-report" id="btnOpenReport">
-            📜 生成关系考古报告
-          </button>
-        </div>
-      </section>
-
+  const strataMain =
+    hasStrata && currentLayer
+      ? `
       <main class="strata-layout">
         <!-- Left: Stratigraphic Column -->
         <section class="core-column-wrap">
@@ -80,8 +54,8 @@ export function renderApp(
             ${report.strata
               .map(
                 (layer, idx) => `
-              <div class="strata-card ${idx === selectedLayerIndex ? 'selected' : ''}" 
-                   data-layer="${idx}" 
+              <div class="strata-card ${idx === activeLayerIndex ? 'selected' : ''}"
+                   data-layer="${idx}"
                    style="--layer-color: ${layer.colorHex}">
                 <div class="strata-card-header">
                   <span class="layer-tag">Layer 0${layer.depthLevel} · ${layer.geologicalCode}</span>
@@ -191,11 +165,33 @@ export function renderApp(
           </div>
         </section>
       </main>
+    `
+      : '';
 
-      <!-- Modal: Report -->
-      ${
-        isReportOpen
-          ? `
+  const emptyMain = !hasStrata
+    ? `
+      <main class="empty-state-wrap">
+        <div class="empty-state-card">
+          <div class="empty-icon">🕳️</div>
+          <h3>勘探现场暂无对话地层</h3>
+          <p class="empty-desc">${escapeHtml(report.archaeologicalSummary)}</p>
+          <div class="empty-actions">
+            <button class="btn-report" id="btnEmptyReimport">📄 重新导入聊天记录</button>
+            ${
+              sampleSites.length > 0
+                ? `<button class="btn-secondary btn-empty-sample" id="btnEmptySample">🏺 载入示例遗址标本</button>`
+                : ''
+            }
+          </div>
+          <p class="empty-hint">支持微信 / QQ / 短信导出的 .txt / .json / .csv 文件 · 纯前端本地计算，无任何网络传输</p>
+        </div>
+      </main>
+    `
+    : '';
+
+  const reportModal = isReportOpen
+    ? hasStrata
+      ? `
         <div class="modal-overlay" id="reportOverlay">
           <div class="modal-content">
             <div class="report-seal">国家地层考古认证</div>
@@ -244,8 +240,98 @@ export function renderApp(
           </div>
         </div>
       `
-          : ''
-      }
+      : `
+        <div class="modal-overlay" id="reportOverlay">
+          <div class="modal-content">
+            <div class="report-seal">空白勘探备案</div>
+            <div class="report-header">
+              <h2>《${escapeHtml(report.siteName)}》关系考古发掘总报告</h2>
+              <div class="report-sub">
+                ARCHAEOLOGICAL FIELD REPORT · 编号 ${escapeHtml(report.siteCode)} · 发掘时间：${report.excavatedAt}
+              </div>
+            </div>
+
+            <div class="report-grid">
+              <div class="report-stat-card">
+                <div class="val">${report.totalDays} 天</div>
+                <div class="lbl">对话地质沉淀跨度</div>
+              </div>
+              <div class="report-stat-card">
+                <div class="val">${report.totalMessages} 条</div>
+                <div class="lbl">出土总话语标本</div>
+              </div>
+              <div class="report-stat-card">
+                <div class="val">${report.carbon14Activity}%</div>
+                <div class="lbl">碳14现代残余活性</div>
+              </div>
+            </div>
+
+            <div class="report-section report-empty-notice">
+              <h4>发掘结论：</h4>
+              <p>当前遗址暂未出土任何对话地层，无法形成有效的考古报告。请导入聊天记录文件，或从标本库选择一处历史遗址后重新生成。</p>
+            </div>
+
+            <div class="report-actions">
+              <button class="btn-secondary" id="btnCloseReport">关闭报告</button>
+            </div>
+          </div>
+        </div>
+      `
+    : '';
+
+  container.innerHTML = `
+    <div class="archaeo-app">
+      <header class="site-header">
+        <div class="brand">
+          <div class="brand-icon">⛏️</div>
+          <div>
+            <h1>对话地层学 · 关系考古勘探系统</h1>
+            <p>RELATIONSHIP STRATIGRAPHY &amp; EXCAVATION REPORT · v1.0.0</p>
+          </div>
+        </div>
+        <div class="header-status">
+          <span>${hasStrata ? '● 发掘就绪' : '○ 等待标本导入'} | 标本勘测点：${escapeHtml(report.siteCode)}</span>
+        </div>
+      </header>
+
+      ${errorBanner}
+
+      <section class="control-hub">
+        <div class="preset-sites">
+          <div class="preset-title">
+            <span>🏺 历史遗址标本库 (点击切换发掘地)：</span>
+          </div>
+          <div class="preset-btns">
+            ${sampleSites
+              .map(
+                s => `
+              <button class="btn-preset ${s.id === selectedSiteId ? 'active' : ''}" data-site="${s.id}">
+                <strong>${escapeHtml(s.name)}</strong>
+                <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(s.eraSpan)}</div>
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+        </div>
+
+        <div class="upload-section">
+          <div class="drop-area" id="dropArea">
+            <input type="file" id="chatFileInput" class="file-input" accept=".txt,.json,.csv" />
+            <p>📄 拖拽或点击导入本地聊天记录文件 (支持微信/QQ/短信文本导出格式)</p>
+            <span style="font-size:12px;color:var(--text-muted);">纯前端本地地质切片计算，无任何网络传输</span>
+          </div>
+          <button class="btn-report" id="btnOpenReport">
+            📜 生成关系考古报告
+          </button>
+        </div>
+      </section>
+
+      ${strataMain}
+      ${emptyMain}
+
+      <!-- Modal: Report -->
+      ${reportModal}
     </div>
   `;
 
@@ -280,11 +366,26 @@ export function renderApp(
       if (fileInput.files && fileInput.files.length > 0) {
         handlers.onUploadFile(fileInput.files[0]);
       }
+      // 重置输入，确保同一文件可以再次触发重新导入
+      fileInput.value = '';
     });
   }
 
   container.querySelector('#btnOpenReport')?.addEventListener('click', () => {
     handlers.onOpenReport();
+  });
+
+  container.querySelector('#btnDismissError')?.addEventListener('click', () => {
+    handlers.onDismissError();
+  });
+
+  // 空状态：重新导入（复用隐藏的文件输入）与载入示例遗址
+  container.querySelector('#btnEmptyReimport')?.addEventListener('click', () => {
+    fileInput?.click();
+  });
+
+  container.querySelector('#btnEmptySample')?.addEventListener('click', () => {
+    handlers.onLoadSample();
   });
 
   container.querySelectorAll('.strata-card').forEach(card => {

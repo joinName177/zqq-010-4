@@ -115,12 +115,22 @@ function findRelic(messages: ChatMessage[], depthLevel: number): FossilArtifact[
 }
 
 export function analyzeChatStrata(messages: ChatMessage[], siteName = '未知时空坐标对话遗址'): ArchaeologyReport {
-  if (messages.length === 0) {
-    throw new Error('聊天记录为空，无法进行地层切片勘探');
+  // 过滤无效标本：缺失时间戳、非法日期或空白内容的记录不参与地层切片
+  const validMessages = (messages || []).filter(
+    m =>
+      m &&
+      m.timestamp instanceof Date &&
+      !Number.isNaN(m.timestamp.getTime()) &&
+      typeof m.content === 'string' &&
+      m.content.trim().length > 0
+  );
+
+  if (validMessages.length === 0) {
+    throw new Error('聊天记录为空或缺少有效时间戳，无法进行地层切片勘探');
   }
 
   // Sort chronological (oldest first)
-  const sorted = [...messages].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const sorted = [...validMessages].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   const startDate = sorted[0].timestamp;
   const endDate = sorted[sorted.length - 1].timestamp;
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
