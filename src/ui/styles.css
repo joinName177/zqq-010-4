@@ -571,3 +571,140 @@ body {
 .btn-secondary:hover {
   border-color: var(--earth-accent);
 }
+
+/* Import error banner */
+.import-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: rgba(157, 2, 8, 0.14);
+  border: 1px solid rgba(231, 111, 81, 0.5);
+  border-left: 4px solid var(--clay-red);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.error-icon {
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.error-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-title {
+  font-weight: 700;
+  color: var(--clay-red);
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.error-message {
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.btn-retry {
+  background: linear-gradient(135deg, var(--clay-red), var(--ochre));
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-serif);
+  transition: opacity 0.2s;
+}
+
+.btn-retry:hover {
+  opacity: 0.9;
+}
+
+.btn-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.btn-dismiss:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Empty states */
+.empty-strata {
+  text-align: center;
+  padding: 48px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.empty-strata .empty-icon,
+.empty-detail .empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+}
+
+.empty-strata p {
+  color: var(--text-main);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.empty-strata span {
+  font-size: 12px;
+}
+
+.empty-detail {
+  margin: auto;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-detail h3 {
+  color: var(--earth-accent);
+  font-size: 18px;
+}
+
+.empty-detail p {
+  font-size: 13px;
+  max-width: 400px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.empty-actions .btn-report {
+  padding: 10px 18px;
+  font-size: 13px;
+}
+
+.report-empty-note {
+  border-left-color: var(--ochre);
+}

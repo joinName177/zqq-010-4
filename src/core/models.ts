@@ -44,6 +44,13 @@ export interface StrataLayer {
   soilPattern: string;
 }
 
+/** 导入/发掘失败的分类，用于界面呈现针对性的错误提示与恢复入口 */
+export type ImportErrorKind =
+  | 'empty-file'         // 空文件：文件无任何文本内容
+  | 'no-valid-messages'  // 无有效消息：文件有内容但识别不出对话
+  | 'empty-preset'       // 空预设：遗址标本数据缺失或已损坏
+  | 'import-failure';    // 导入失败：文件读取或解析过程异常
+
 export interface ArchaeologyReport {
   siteCode: string;
   siteName: string;

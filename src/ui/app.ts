@@ -1,11 +1,27 @@
-import { ArchaeologyReport, StrataLayer } from '../core/models';
+import { ArchaeologyReport, ImportErrorKind, StrataLayer } from '../core/models';
 import { SampleSite } from '../adapters/sample-data.adapter';
+import { isDefaultReport } from '../core/default-report';
+
+export interface ImportErrorState {
+  kind: ImportErrorKind;
+  message: string;
+  sourceName?: string;
+}
 
 export interface UIEventHandlers {
   onSelectPreset: (siteId: string) => void;
   onUploadFile: (file: File) => void;
   onOpenReport: () => void;
+  onRestoreDefault: () => void;
+  onDismissError: () => void;
 }
+
+const ERROR_TITLES: Record<ImportErrorKind, string> = {
+  'empty-file': '空文件 · 未检测到任何对话内容',
+  'no-valid-messages': '无有效消息 · 未识别出对话记录',
+  'empty-preset': '空预设 · 遗址标本数据缺失',
+  'import-failure': '导入失败 · 文件读取或解析异常'
+};
 
 export function renderApp(
   container: HTMLElement,
@@ -14,11 +30,18 @@ export function renderApp(
   selectedSiteId: string,
   selectedLayerIndex: number,
   isReportOpen: boolean,
+  importError: ImportErrorState | null,
   handlers: UIEventHandlers,
   onSelectLayer: (idx: number) => void,
   onCloseReport: () => void
 ) {
-  const currentLayer = report.strata[selectedLayerIndex] || report.strata[0];
+  const hasStrata = report.strata.length > 0;
+  // 越界保护：无论外部传入什么索引，都只会访问真实存在的地层
+  const safeLayerIndex = hasStrata
+    ? Math.min(Math.max(selectedLayerIndex, 0), report.strata.length - 1)
+    : -1;
+  const currentLayer: StrataLayer | null = safeLayerIndex >= 0 ? report.strata[safeLayerIndex] : null;
+  const isDefault = isDefaultReport(report);
 
   const escapeHtml = (str: string) =>
     str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
@@ -34,9 +57,32 @@ export function renderApp(
           </div>
         </div>
         <div class="header-status">
-          <span>● 发掘就绪 | 标本勘测点：${escapeHtml(report.siteCode)}</span>
+          <span>${
+            hasStrata
+              ? `● 发掘就绪 | 标本勘测点：${escapeHtml(report.siteCode)}`
+              : '○ 空白遗址 · 等待对话标本入库'
+          }</span>
         </div>
       </header>
+
+      ${
+        importError
+          ? `
+        <section class="import-error-banner" role="alert">
+          <div class="error-icon">⚠️</div>
+          <div class="error-body">
+            <div class="error-title">${ERROR_TITLES[importError.kind]}</div>
+            <div class="error-message">${escapeHtml(importError.message)}</div>
+          </div>
+          <div class="error-actions">
+            <button class="btn-retry" id="btnRetryImport">🔄 重新导入</button>
+            <button class="btn-secondary" id="btnRestoreDefault">🏺 恢复默认标本</button>
+            <button class="btn-dismiss" id="btnDismissError" title="关闭提示">✕</button>
+          </div>
+        </section>
+      `
+          : ''
+      }
 
       <section class="control-hub">
         <div class="preset-sites">
@@ -77,11 +123,13 @@ export function renderApp(
             <span class="depth-indicator">总发掘深度: ${report.strata.length * 2.5}m</span>
           </div>
           <div class="strata-stack">
-            ${report.strata
-              .map(
-                (layer, idx) => `
-              <div class="strata-card ${idx === selectedLayerIndex ? 'selected' : ''}" 
-                   data-layer="${idx}" 
+            ${
+              hasStrata
+                ? report.strata
+                    .map(
+                      (layer, idx) => `
+              <div class="strata-card ${idx === safeLayerIndex ? 'selected' : ''}"
+                   data-layer="${idx}"
                    style="--layer-color: ${layer.colorHex}">
                 <div class="strata-card-header">
                   <span class="layer-tag">Layer 0${layer.depthLevel} · ${layer.geologicalCode}</span>
@@ -94,13 +142,24 @@ export function renderApp(
                 </div>
               </div>
             `
-              )
-              .join('')}
+                    )
+                    .join('')
+                : `
+              <div class="empty-strata">
+                <div class="empty-icon">🏜️</div>
+                <p>空白遗址 · 尚未沉积任何对话地层</p>
+                <span>导入聊天记录文件或选择完整遗址标本后，此处将生成五层地质构造</span>
+              </div>
+            `
+            }
           </div>
         </section>
 
         <!-- Right: Layer Inspection Details -->
         <section class="detail-panel">
+          ${
+            currentLayer
+              ? `
           <div class="detail-header">
             <div class="detail-epoch">
               Layer 0${currentLayer.depthLevel}：${escapeHtml(currentLayer.epochName)}
@@ -189,6 +248,20 @@ export function renderApp(
               }
             </div>
           </div>
+          `
+              : `
+          <!-- Empty state: no strata available -->
+          <div class="empty-detail">
+            <div class="empty-icon">⛏️</div>
+            <h3>暂无可供勘测的地层</h3>
+            <p>当前遗址尚未出土任何地质层位。请导入微信 / QQ / 短信聊天记录文件，或恢复默认遗址标本后开始发掘。</p>
+            <div class="empty-actions">
+              <button class="btn-report" id="btnEmptyImport">📄 导入对话标本</button>
+              <button class="btn-secondary" id="btnEmptyRestore">🏺 恢复默认标本</button>
+            </div>
+          </div>
+          `
+          }
         </section>
       </main>
 
@@ -220,6 +293,17 @@ export function renderApp(
                 <div class="lbl">碳14现代残余活性</div>
               </div>
             </div>
+
+            ${
+              isDefault
+                ? `
+              <div class="report-section report-empty-note">
+                <h4>⚠️ 系统默认空白报告</h4>
+                <p>当前报告由系统默认生成，尚未基于真实对话标本发掘。导入有效聊天记录或选择完整遗址标本后，此处将呈现真实的地层纪年、温差曲线与文物鉴定结果。</p>
+              </div>
+            `
+                : ''
+            }
 
             <div class="report-section">
               <h4>地层温差纪年：</h4>
@@ -277,14 +361,38 @@ export function renderApp(
     });
 
     fileInput.addEventListener('change', () => {
-      if (fileInput.files && fileInput.files.length > 0) {
-        handlers.onUploadFile(fileInput.files[0]);
+      const file = fileInput.files && fileInput.files[0];
+      if (file) {
+        handlers.onUploadFile(file);
       }
+      // 重置选择器，保证重新导入同一文件时 change 事件仍会触发
+      fileInput.value = '';
     });
   }
 
   container.querySelector('#btnOpenReport')?.addEventListener('click', () => {
     handlers.onOpenReport();
+  });
+
+  // 重新导入流程：错误横幅与空状态面板中的入口均直接打开文件选择器
+  container.querySelector('#btnRetryImport')?.addEventListener('click', () => {
+    (container.querySelector('#chatFileInput') as HTMLInputElement | null)?.click();
+  });
+
+  container.querySelector('#btnEmptyImport')?.addEventListener('click', () => {
+    (container.querySelector('#chatFileInput') as HTMLInputElement | null)?.click();
+  });
+
+  container.querySelector('#btnRestoreDefault')?.addEventListener('click', () => {
+    handlers.onRestoreDefault();
+  });
+
+  container.querySelector('#btnEmptyRestore')?.addEventListener('click', () => {
+    handlers.onRestoreDefault();
+  });
+
+  container.querySelector('#btnDismissError')?.addEventListener('click', () => {
+    handlers.onDismissError();
   });
 
   container.querySelectorAll('.strata-card').forEach(card => {
